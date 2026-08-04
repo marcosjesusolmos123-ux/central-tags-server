@@ -3,6 +3,7 @@ require("dotenv").config({ quiet: true });
 const express = require("express");
 const cors = require("cors");
 const ocrRoutes = require("./routes/ocrRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/ocr", ocrRoutes);
+app.use("/admin", adminRoutes);
 
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);

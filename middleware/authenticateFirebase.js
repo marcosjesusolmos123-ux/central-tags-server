@@ -14,7 +14,10 @@ async function authenticateFirebase(req, res, next) {
 
   try {
     const decodedToken = await auth.verifyIdToken(match[1], true);
-    req.auth = { uid: decodedToken.uid };
+    req.auth = {
+      uid: decodedToken.uid,
+      admin: decodedToken.admin === true,
+    };
     return next();
   } catch (error) {
     return res.status(401).json({
