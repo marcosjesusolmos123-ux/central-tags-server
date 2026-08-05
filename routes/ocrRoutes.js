@@ -37,12 +37,13 @@ router.post("/test", authenticateFirebase, upload.single("image"), async (req, r
       throw error;
     }
 
-    await finishOcrSuccess(req.auth.uid, reservation);
+    const usage = await finishOcrSuccess(req.auth.uid, reservation);
     reservation = null;
 
     res.json({
       ok: true,
       text: result.fullTextAnnotation?.text || "",
+      ...usage,
     });
   } catch (error) {
     if (error instanceof OcrLimitReachedError) {

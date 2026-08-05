@@ -25,7 +25,7 @@ async function requestOcr({ quotaError, visionResult = "texto" }) {
   mock(quotaPath, {
     OcrLimitReachedError, OcrDisabledError, OcrPlanExpiredError,
     reserveOcrCredit: async () => { if (quotaError === "disabled") throw new OcrDisabledError(); if (quotaError === "expired") throw new OcrPlanExpiredError(); return {}; },
-    finishOcrSuccess: async () => {}, finishOcrFailure: async () => {}, getOcrUsage: async () => ({}),
+    finishOcrSuccess: async () => ({ ocrUsed: 1, ocrLimit: 50, ocrRemaining: 49 }), finishOcrFailure: async () => {}, getOcrUsage: async () => ({}),
   });
   const express = require("express");
   const app = express();
@@ -73,5 +73,18 @@ test("regresión: OCR normal conserva el procesamiento exitoso sin Vision real",
   const result = await requestOcr({});
   assert.equal(result.status, 200);
   assert.equal(result.body.text, "texto");
+  assert.equal(result.body.ocrUsed, 1);
+  assert.equal(result.body.ocrLimit, 50);
+  assert.equal(result.body.ocrRemaining, 49);
   assert.equal(result.visionCalls, 1);
+});
+
+test("un OCR exitoso sin texto consume la captura y devuelve el saldo", async () => {
+  const result = await requestOcr({ visionResult: "" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.text, "");
+  assert.deepEqual(
+    { ocrUsed: result.body.ocrUsed, ocrLimit: result.body.ocrLimit, ocrRemaining: result.body.ocrRemaining },
+    { ocrUsed: 1, ocrLimit: 50, ocrRemaining: 49 }
+  );
 });

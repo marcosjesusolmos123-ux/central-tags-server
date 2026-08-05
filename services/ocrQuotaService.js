@@ -68,17 +68,19 @@ async function reserveOcrCredit(uid) {
 }
 
 async function finishOcrSuccess(uid, reservation) {
-  await db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction) => {
     const userSnapshot = await transaction.get(reservation.userRef);
     const user = normalizedUser(userSnapshot.exists ? userSnapshot.data() : {});
+    const ocrUsed = user.ocrUsed + 1;
+    const ocrPending = Math.max(0, user.ocrPending - 1);
 
     transaction.set(
       reservation.userRef,
       {
         plan: user.plan,
         ocrLimit: user.ocrLimit,
-        ocrUsed: user.ocrUsed + 1,
-        ocrPending: Math.max(0, user.ocrPending - 1),
+        ocrUsed,
+        ocrPending,
       },
       { merge: true }
     );
@@ -87,6 +89,12 @@ async function finishOcrSuccess(uid, reservation) {
       consumedCredit: true,
       completedAt: FieldValue.serverTimestamp(),
     });
+
+    return {
+      ocrUsed,
+      ocrLimit: user.ocrLimit,
+      ocrRemaining: Math.max(0, user.ocrLimit - ocrUsed - ocrPending),
+    };
   });
 }
 
