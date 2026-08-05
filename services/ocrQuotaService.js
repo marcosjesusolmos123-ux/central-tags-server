@@ -1,8 +1,6 @@
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { db } = require("./firebaseService");
-
-const DEFAULT_PLAN = "free";
-const DEFAULT_OCR_LIMIT = 50;
+const { normalizedUser, isPlanExpired, publicOcrState } = require("./userModel");
 
 class OcrLimitReachedError extends Error {
   constructor() {
@@ -12,17 +10,20 @@ class OcrLimitReachedError extends Error {
   }
 }
 
-function safeNonNegativeInteger(value, fallback) {
-  return Number.isInteger(value) && value >= 0 ? value : fallback;
+class OcrDisabledError extends Error {
+  constructor() {
+    super("El OCR fue desactivado para esta cuenta.");
+    this.name = "OcrDisabledError";
+    this.code = "OCR_DISABLED";
+  }
 }
 
-function normalizedUser(data = {}) {
-  return {
-    plan: typeof data.plan === "string" && data.plan ? data.plan : DEFAULT_PLAN,
-    ocrLimit: safeNonNegativeInteger(data.ocrLimit, DEFAULT_OCR_LIMIT),
-    ocrUsed: safeNonNegativeInteger(data.ocrUsed, 0),
-    ocrPending: safeNonNegativeInteger(data.ocrPending, 0),
-  };
+class OcrPlanExpiredError extends Error {
+  constructor() {
+    super("El plan mensual de OCR está vencido. Debe ser renovado por un administrador.");
+    this.name = "OcrPlanExpiredError";
+    this.code = "OCR_PLAN_EXPIRED";
+  }
 }
 
 function refsFor(uid) {
@@ -38,6 +39,8 @@ async function reserveOcrCredit(uid) {
     const userSnapshot = await transaction.get(userRef);
     const user = normalizedUser(userSnapshot.exists ? userSnapshot.data() : {});
 
+    if (!user.ocrEnabled) throw new OcrDisabledError();
+    if (isPlanExpired(user)) throw new OcrPlanExpiredError();
     if (user.ocrUsed + user.ocrPending >= user.ocrLimit) {
       throw new OcrLimitReachedError();
     }
@@ -46,6 +49,7 @@ async function reserveOcrCredit(uid) {
       userRef,
       {
         plan: user.plan,
+        ocrEnabled: user.ocrEnabled,
         ocrLimit: user.ocrLimit,
         ocrUsed: user.ocrUsed,
         ocrPending: user.ocrPending + 1,
@@ -157,8 +161,6 @@ async function getOcrUsage(uid, query = {}) {
   const userSnapshot = await userRef.get();
   const user = normalizedUser(userSnapshot.exists ? userSnapshot.data() : {});
 
-  await userRef.set(user, { merge: true });
-
   const counts = await Promise.all([
     countConsumedBetween(logsRef, todayStart, end),
     countConsumedBetween(logsRef, sevenDaysStart, end),
@@ -167,10 +169,7 @@ async function getOcrUsage(uid, query = {}) {
   ]);
 
   return {
-    plan: user.plan,
-    ocrLimit: user.ocrLimit,
-    ocrUsed: user.ocrUsed,
-    ocrRemaining: Math.max(0, user.ocrLimit - user.ocrUsed - user.ocrPending),
+    ...publicOcrState(user, now),
     usedToday: counts[0],
     usedLast7Days: counts[1],
     usedCurrentMonth: counts[2],
@@ -181,10 +180,23 @@ async function getOcrUsage(uid, query = {}) {
   };
 }
 
+async function getUsageSummary(uid) {
+  const usage = await getOcrUsage(uid);
+  return {
+    today: usage.usedToday,
+    last7Days: usage.usedLast7Days,
+    currentMonth: usage.usedCurrentMonth,
+    timezone: usage.timezone,
+  };
+}
+
 module.exports = {
   OcrLimitReachedError,
+  OcrDisabledError,
+  OcrPlanExpiredError,
   reserveOcrCredit,
   finishOcrSuccess,
   finishOcrFailure,
   getOcrUsage,
+  getUsageSummary,
 };

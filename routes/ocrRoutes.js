@@ -4,6 +4,8 @@ const { client } = require("../services/visionService");
 const authenticateFirebase = require("../middleware/authenticateFirebase");
 const {
   OcrLimitReachedError,
+  OcrDisabledError,
+  OcrPlanExpiredError,
   reserveOcrCredit,
   finishOcrSuccess,
   finishOcrFailure,
@@ -43,8 +45,6 @@ router.post("/test", authenticateFirebase, upload.single("image"), async (req, r
       text: result.fullTextAnnotation?.text || "",
     });
   } catch (error) {
-    console.error(error);
-
     if (error instanceof OcrLimitReachedError) {
       return res.status(429).json({
         ok: false,
@@ -52,6 +52,12 @@ router.post("/test", authenticateFirebase, upload.single("image"), async (req, r
         message: error.message,
       });
     }
+
+    if (error instanceof OcrDisabledError || error instanceof OcrPlanExpiredError) {
+      return res.status(403).json({ ok: false, code: error.code, message: error.message });
+    }
+
+    console.error(error);
 
     res.status(500).json({
       ok: false,

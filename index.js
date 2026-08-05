@@ -4,10 +4,17 @@ const express = require("express");
 const cors = require("cors");
 const ocrRoutes = require("./routes/ocrRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const { getAdminConfig } = require("./config/adminConfig");
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = getAdminConfig().corsOrigins;
+app.use(cors(allowedOrigins.length ? {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+} : undefined));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
@@ -19,6 +26,10 @@ app.get("/", (req, res) => {
 app.use("/ocr", ocrRoutes);
 app.use("/admin", adminRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor escuchando en el puerto ${PORT}`);
+  });
+}
+
+module.exports = app;

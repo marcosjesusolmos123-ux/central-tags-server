@@ -16,6 +16,7 @@ async function authenticateFirebase(req, res, next) {
     const decodedToken = await auth.verifyIdToken(match[1], true);
     req.auth = {
       uid: decodedToken.uid,
+      email: typeof decodedToken.email === "string" ? decodedToken.email : null,
       admin: decodedToken.admin === true,
     };
     return next();
